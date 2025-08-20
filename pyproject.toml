@@ -1,0 +1,40 @@
+[project]
+name = "mwsb"
+requires-python = ">= 3.9"
+description = "Python benchmark library for Sentinel-1 WV SWH prediction to compute metrics."
+readme.file = "README.md"
+readme.content-type = "text/markdown"
+
+license = {text = "MIT"}
+keywords = ["SAR", "wave", "research", "SWH","benchmark"]
+authors = [
+  {name = "Antoine Grouazel"}
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyyaml",
+]
+dynamic = ["version"]
+
+[build-system]
+requires = ["setuptools>=64.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["mwsb"]
+
+[tool.setuptools_scm]
+fallback_version = "999"
+
+[tool.isort]
+profile = "black"
+skip_gitignore = true
+float_to_top = true
+default_section = "THIRDPARTY"
+known_first_party = "mwsb"
+
+[project.scripts]
