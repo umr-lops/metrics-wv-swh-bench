@@ -5,9 +5,23 @@ In 2019 ESA project Climate Change Initiative (CCI) sea-state, developed a work-
 This python library aims at providing the methods to compute the score defined in the CCI sea-state document: https://climate.esa.int/media/documents/Sea_State_cci_PVASR_v1.1-signed.pdf 
 
 
+
+
 ## usage
 
 ```python
 import mwsb
 metrics_ndbc,metrics_cmems,total_score,inc_scores = mwsb.metrics.compute_metrics(df_wv_ndbc=matchups,ds_wv_cmems=colocated_s1_cmems)
 ```
+
+### example of input
+
+input dataset is expected to be `pd.DataFrame` with columns: `lon`,`lat`,`swh`,`incidence-angle`.
+
+   ![Example Figure](docs/figures/input_example.png)
+
+### example of output
+
+score computed look like this:
+
+   ![out Example Figure](docs/figures/output_example.png)
