@@ -1,0 +1,24 @@
+name: mwsb-tests
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  # development
+  - ipython
+  - pre-commit
+  - jupyterlab
+  - jupyterlab_code_formatter
+  - isort
+  - black
+  - dask-labextension
+  # testing
+  - pytest
+  - pytest-reportlog
+  - hypothesis
+  - coverage
+  # data
+  - numpy
+  - pandas
+  # processing
+  - more-itertools
+  - importlib_resources
