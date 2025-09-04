@@ -11,7 +11,7 @@ This python library aims at providing the methods to compute the score defined i
 
 ```python
 import mwsb
-metrics_ndbc,metrics_cmems,total_score,inc_scores = mwsb.metrics.compute_metrics(df_wv_ndbc=matchups,ds_wv_cmems=colocated_s1_cmems)
+score_ndbc,score_cmems,total_score,inc_scores = mwsb.metrics.compute_metrics(df_wv_ndbc=df1,ds_wv_cmems=df2)
 ```
 
 ### example of input

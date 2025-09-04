@@ -4,6 +4,7 @@ import numpy as np
 import copy
 from mwsb.metrics import get_nb_outliers, S1_WV_SWH_VARNAME, GROUND_TRUTH_VARNAME
 from mwsb.metrics import get_rmse, get_median_bias
+import mwsb.metrics as metrics
 
 # File: mwsb/test_metrics.py
 
@@ -59,3 +60,76 @@ def test_median_bias_simple():
     df = make_df([2.0, 2.0, 2.0], [1.0, 1.0, 1.0])
     # All diffs are 1.0, so median is 1.0
     assert get_median_bias(df) == 1.0
+
+def test_load_config(tmp_path):
+    # Crée un fichier YAML temporaire
+    yaml_content = "S1-WV-SWH-VARNAME: test_swh\nGROUND_TRUTH_VARNAME: test_gt"
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(yaml_content)
+    config = metrics.load_config(str(config_file))
+    assert config["S1-WV-SWH-VARNAME"] == "test_swh"
+    assert config["GROUND_TRUTH_VARNAME"] == "test_gt"
+
+
+def test_get_rmse():
+    df = pd.DataFrame({
+        metrics.S1_WV_SWH_VARNAME: [1, 2, 3],
+        metrics.GROUND_TRUTH_VARNAME: [1, 2, 4]
+    })
+    rmse = metrics.get_rmse(df)
+    assert np.isclose(rmse, np.sqrt(((0)**2 + (0)**2 + (1)**2)/3))
+
+def test_get_median_bias():
+    df = pd.DataFrame({
+        metrics.S1_WV_SWH_VARNAME: [1, 2, 3],
+        metrics.GROUND_TRUTH_VARNAME: [1, 2, 4]
+    })
+    bias = metrics.get_median_bias(df)
+    assert bias == np.median([0, 0, 1])
+
+def test_get_number_no_data():
+    df = pd.DataFrame({
+        metrics.S1_WV_SWH_VARNAME: [1, np.nan, 3],
+        metrics.GROUND_TRUTH_VARNAME: [1, 2, 3]
+    })
+    assert metrics.get_number_no_data(df) == 1
+
+def test_get_pct_no_data():
+    df = pd.DataFrame({
+        metrics.S1_WV_SWH_VARNAME: [1, np.nan, 3, np.nan],
+        metrics.GROUND_TRUTH_VARNAME: [1, 2, 3, 4]
+    })
+    pct = metrics.get_pct_no_data(df)
+    assert np.isclose(pct, 50.0)
+
+def test_make_df():
+    swhs = [1, 2, 3]
+    gt = [1, 2, 4]
+    df = metrics.make_df(swhs, gt)
+    assert metrics.S1_WV_SWH_VARNAME in df.columns
+    assert metrics.GROUND_TRUTH_VARNAME in df.columns
+    assert len(df) == 3
+
+def test_compute_normalized_parameters():
+    # Structure simplifiée
+    metrics_dict = {
+        'wv1': {
+            'low': {'no-data-pct': 0, 'outlier-pct': 0, 'rmse': 0.2, 'median_abs_bias': 0}
+        }
+    }
+    norm = metrics.compute_normalized_parameters(metrics_dict)
+    assert 'no-data-pct_normalized' in norm['wv1']['low']
+
+def test_compute_score():
+    # Structure simplifiée
+    metrics_ndbc = {
+        'wv1': {'low': {'no-data-pct_normalized': 0, 'rmse_normalized': 0, 'median_abs_bias_normalized': 0, 'outlier-pct_normalized': 0}},
+        'wv2': {'low': {'no-data-pct_normalized': 0, 'rmse_normalized': 0, 'median_abs_bias_normalized': 0, 'outlier-pct_normalized': 0}}
+    }
+    metrics_cmems = {
+        'wv1': {'low': {'no-data-pct_normalized': 0, 'rmse_normalized': 0, 'median_abs_bias_normalized': 0, 'outlier-pct_normalized': 0}},
+        'wv2': {'low': {'no-data-pct_normalized': 0, 'rmse_normalized': 0, 'median_abs_bias_normalized': 0, 'outlier-pct_normalized': 0}}
+    }
+    total_score, scores = metrics.compute_score(metrics_ndbc, metrics_cmems)
+    assert isinstance(total_score, float)
+    assert isinstance(scores, dict)
