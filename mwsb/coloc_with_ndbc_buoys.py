@@ -65,13 +65,14 @@ def create_mock_buoy_data():
     }
     return pd.DataFrame(data)
 
-def colocate_satellite_buoy(satellite_ds, buoy_df, time_threshold_minutes=60, distance_threshold_km=50):
+def colocate_satellite_buoy(satellite_ds, buoy_df,suffix_sar_ds, time_threshold_minutes=60, distance_threshold_km=50,base_csv_time_varname='time'):
     """
     Co-localise les données satellites avec les données des bouées.
 
     Args:
         satellite_ds (xr.Dataset): Dataset Xarray contenant les données satellites.
         buoy_df (pd.DataFrame): DataFrame Pandas contenant les données des bouées.
+        suffix_sar_ds (str): suffixe to add to sar dataset variables to identify the source
         time_threshold_minutes (int): Seuil de temps en minutes.
         distance_threshold_km (int): Seuil de distance en kilomètres.
 
@@ -79,18 +80,29 @@ def colocate_satellite_buoy(satellite_ds, buoy_df, time_threshold_minutes=60, di
         pd.DataFrame: Un DataFrame contenant les paires de données co-localisées.
     """
     
-    matchups = []
+    matchups = [] # what will be added to buoy data
 
     # S'assurer que les colonnes de temps sont au format datetime
+    # if 'time_fixed' in satellite_ds:
+    #     print("use time fixed")
+    #     satellite_ds['time'] = pd.to_datetime(satellite_ds['time_fixed'].values)
+    # else:
     satellite_ds['time'] = pd.to_datetime(satellite_ds['time'].values)
-    buoy_df['time'] = pd.to_datetime(buoy_df['time'])
+    if 'buoy_time' not in buoy_df.columns:
+        buoy_df['time'] = pd.to_datetime(buoy_df[base_csv_time_varname])
+    if 'buoy_BUOY' not in buoy_df.columns:
+        # rename columns to identify the source
+        for col in buoy_df.columns:
+            buoy_df[f'buoy_{col}'] = buoy_df[col]
+    else:
+        print('buoy columns already renamed')
     cpt = collections.defaultdict(int)
     # Itérer sur chaque mesure de bouée
     for index in tqdm(range(len(buoy_df))):
     # for index, buoy_row in buoy_df.iterrows():
         buoy_row = buoy_df.iloc[index]
-        buoy_time = buoy_row['time']
-        buoy_coords = (buoy_row['lat'], buoy_row['lon'])
+        buoy_time = buoy_row['buoy_time']
+        buoy_coords = (buoy_row['buoy_lat'], buoy_row['buoy_lon'])
 
         # 1. Filtrage temporel
         # Convertissez-le en np.datetime64 avant de l'utiliser pour le slicing
@@ -107,6 +119,11 @@ def colocate_satellite_buoy(satellite_ds, buoy_df, time_threshold_minutes=60, di
         # satellite_subset = satellite_ds.sel(time=slice(time_min, time_max))
 
         if not satellite_subset.time.size:
+            cpt['empty_sar_subset'] += 1
+            nan_row = {f"{var}_{suffix_sar_ds}": np.nan for var in satellite_ds.data_vars}
+            # nan_row['buoy_time'] = buoy_time
+            # nan_row.update(buoy_info)
+            matchups.append(pd.DataFrame([nan_row]))
             continue
 
         # 2. Filtrage spatial
@@ -123,6 +140,10 @@ def colocate_satellite_buoy(satellite_ds, buoy_df, time_threshold_minutes=60, di
 
         if not nearby_satellite_points.time.size:
             cpt['no_time_matchup'] += 1
+            nan_row = {f"{var}_{suffix_sar_ds}": np.nan for var in satellite_ds.data_vars}
+            # nan_row['buoy_time'] = buoy_time
+            # nan_row.update(buoy_info)
+            matchups.append(pd.DataFrame([nan_row]))
             continue
             
         # 3. Trouve le point satellite le plus proche dans le sous-ensemble
@@ -134,39 +155,66 @@ def colocate_satellite_buoy(satellite_ds, buoy_df, time_threshold_minutes=60, di
             if not isinstance(closest_satellite_point['time'].values,np.ndarray): #case one single value
                 closest_satellite_point = closest_satellite_point.expand_dims('time')
             cpt['matchup'] += 1
+            # rename variables to identify the source
+            vars_to_rename = {var: f"{var}_{suffix_sar_ds}" for var in closest_satellite_point.data_vars}
+            closest_satellite_point = closest_satellite_point.rename(vars_to_rename)
+            # convert to dataframe
             matchup = closest_satellite_point.to_dataframe().reset_index()
-            for col in buoy_df.columns:
-                matchup[f'buoy_{col}'] = buoy_row[col]
+            # matchup['buoy_time'] = buoy_time
+            # for col in buoy_df.columns:
+            #     matchup[f'buoy_{col}'] = buoy_row[col]
         else:
+            nan_row = {f"{var}_{suffix_sar_ds}": np.nan for var in satellite_ds.data_vars}
+            # nan_row['buoy_time'] = buoy_time
+            # nan_row.update(buoy_info)
+            matchups.append(pd.DataFrame([nan_row]))
             cpt['no_geo_matchup'] += 1
         
         matchups.append(matchup)
-
-    if not matchups:
-        return pd.DataFrame()
-    print('counter',cpt)
-    return pd.concat(matchups, ignore_index=True)
+    matchups_df = pd.concat(matchups, ignore_index=True)
+    # remove lon, lat, time columns from satellite data to avoid confusion
+    cols_to_drop = [col for col in matchups_df.columns if col in ['lon', 'lat', 'time','dim_0']]
+    matchups_df = matchups_df.drop(columns=cols_to_drop)
+    # merge with buoy data to have all buoy information
+    # Before merging, add an index column to both DataFrames
+    matchups_df = matchups_df.reset_index(drop=True)
+    buoy_df = buoy_df.reset_index(drop=True)
+    matchups_df['index'] = matchups_df.index
+    buoy_df['index'] = buoy_df.index
+    matchups_df = pd.merge(matchups_df, buoy_df, left_on='index', right_on='index')
+    cpt_new_colmuns = 0
+    for ii in matchups_df.columns:
+        if ii not in buoy_df.columns:
+            cpt_new_colmuns += 1
+    print('new columns in matchups_df',cpt_new_colmuns,'/',len(matchups_df.columns))
+    # if not matchups:
+        # return pd.DataFrame()
+    print(suffix_sar_ds,'counter',cpt)
+    # return pd.concat(matchups, ignore_index=True)
+    return matchups_df
 
 # --- Programme Principal ---
 if __name__ == '__main__':
     # Création des données de démonstration
-    satellite_file = 'satellite_data.nc'
-    create_mock_satellite_data(satellite_file)
-    buoy_data = create_mock_buoy_data()
-
+    # satellite_file = 'satellite_data.nc'
+    # create_mock_satellite_data(satellite_file)
+    # buoy_data = create_mock_buoy_data()
+    buoy_data = get_buoy_data()
+    satellite_file = '/raid/localscratch/agrouaze/S1_WV_round_robin_dataset_SAR_CCI_sea_state_v4interim_DLR_2021.1_v1.nc'
     # Chargement des données
     satellite_dataset = xr.open_dataset(satellite_file)
-    
+    import pdb
     print("Données Satellites (extrait):")
     print(satellite_dataset)
     print("\nDonnées Bouées:")
     print(buoy_data)
 
     # Exécution de la co-localisation
-    colocated_data = colocate_satellite_buoy(satellite_dataset, buoy_data)
+    colocated_data = colocate_satellite_buoy(satellite_dataset, buoy_data, suffix_sar_ds='DLRv4_')
 
     print("\n--- Résultats de la Co-localisation ---")
     if colocated_data.empty:
         print("Aucune co-localisation trouvée.")
     else:
         print(colocated_data)
+    pdb.set_trace()
