@@ -1,0 +1,17 @@
+name: Docker Image CI for GHCR.io
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build_and_publish:
+    name: Build doker image of mwsb and push to GHCR.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: action/checkout@v4
+      - name: Build and push the image
+        run: |
+          docker login --username agrouaze --password ${{ secrets.GH_TOKEN }} ghcr.io
+          docker build . --tag ghcr.io/agrouaze/xsarslc-ghcr:latest
+          docker push ghcr.io/agrouaze/xsarslc-ghcr:latest
