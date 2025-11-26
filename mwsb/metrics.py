@@ -190,12 +190,13 @@ def get_pct_no_data(df):
     return 100.0 * nbnodata / len(df) if len(df) > 0 else 0.0
 
 
-def compute_metrics(df_wv_ndbc, ds_wv_cmems, alternative_names=None):
+def compute_metrics(df_wv_ndbc, ds_wv_cmems=None, alternative_names=None):
     """
     Compute metrics for the SWHs based on the given DataFrame.
 
     Args:
         df_wv_ndbc (pd.DataFrame): DataFrame containing the SWH data.
+        ds_wv_cmems (xarray.Dataset, optional): Dataset containing CMEMS model data. -> deprecated since MFWAM model is assimilating WV data.
         alternative_names (dict, optional): Alternative variable names.
 
     Returns:
@@ -203,7 +204,8 @@ def compute_metrics(df_wv_ndbc, ds_wv_cmems, alternative_names=None):
     """
     # remove the data at high latitudes
     df_wv_ndbc = df_wv_ndbc[(df_wv_ndbc[INCIDENCE_ANGLE_VARNAME] > -60) & (df_wv_ndbc[INCIDENCE_ANGLE_VARNAME] < 60)]
-    ds_wv_cmems = ds_wv_cmems.where(abs(ds_wv_cmems['lat'])<60,drop=True)
+    if ds_wv_cmems is not None:
+        ds_wv_cmems = ds_wv_cmems.where(abs(ds_wv_cmems['lat'])<60,drop=True)
 
     metrics_ndbc = {}
     metrics_cmems = {}
@@ -212,23 +214,29 @@ def compute_metrics(df_wv_ndbc, ds_wv_cmems, alternative_names=None):
         metrics_cmems[wv] = {}
         if wv == 'wv1':
             condinc = df_wv_ndbc[INCIDENCE_ANGLE_VARNAME] < 30
-            cond_cmems_inc = ds_wv_cmems['angle_of_incidence']<30
+            if ds_wv_cmems is not None:
+                cond_cmems_inc = ds_wv_cmems['angle_of_incidence']<30
         else:
             condinc = df_wv_ndbc[INCIDENCE_ANGLE_VARNAME] > 30
-            cond_cmems_inc = ds_wv_cmems['angle_of_incidence']>30
+            if ds_wv_cmems is not None:
+                cond_cmems_inc = ds_wv_cmems['angle_of_incidence']>30
         sub = df_wv_ndbc[condinc]
-        sub_cmems = ds_wv_cmems.where(cond_cmems_inc,drop=True)
+        if ds_wv_cmems is not None:
+            sub_cmems = ds_wv_cmems.where(cond_cmems_inc,drop=True)
         for seastate in CATEGORIES:
             metrics_ndbc[wv][seastate] = {}
-            metrics_cmems[wv][seastate] = {}
+            if ds_wv_cmems is not None:
+                metrics_cmems[wv][seastate] = {}
             subsub = sub[(sub[GROUND_TRUTH_VARNAME] > CATEGORIES[seastate][0]) &
                          (sub[GROUND_TRUTH_VARNAME] < CATEGORIES[seastate][1])]
-            tmp_cond = (sub_cmems[GROUND_TRUTH_VARNAME_CMEMS] > CATEGORIES[seastate][0]) & (sub_cmems[GROUND_TRUTH_VARNAME_CMEMS] < CATEGORIES[seastate][1])
-            subsub_cmems = sub_cmems.where(tmp_cond,drop=True).to_dataframe()
+            if ds_wv_cmems is not None:
+                tmp_cond = (sub_cmems[GROUND_TRUTH_VARNAME_CMEMS] > CATEGORIES[seastate][0]) & (sub_cmems[GROUND_TRUTH_VARNAME_CMEMS] < CATEGORIES[seastate][1])
+                subsub_cmems = sub_cmems.where(tmp_cond,drop=True).to_dataframe()
             if len(subsub) == 0:
                 print('warning, no data in', wv, seastate)
-            if len(subsub_cmems) == 0:
-                print('warning, no data CMEMS colocs in', wv, seastate)
+            if ds_wv_cmems is not None:
+                if len(subsub_cmems) == 0:
+                    print('warning, no data CMEMS colocs in', wv, seastate)
             # WV vs NDBC buoys metrics
             nb_out = get_nb_outliers(df=subsub)
             pct_outlier = get_pct_outliers(df=subsub)
@@ -245,21 +253,24 @@ def compute_metrics(df_wv_ndbc, ds_wv_cmems, alternative_names=None):
             metrics_ndbc[wv][seastate]['no-data-pct'] = pct_no_data
 
             # WV vs CMEMS model metrics
-            nb_out = get_nb_outliers(df=subsub_cmems)
-            pct_outlier = get_pct_outliers(df=subsub_cmems)
-            nb_no_data = get_number_no_data(df=subsub_cmems)
-            pct_no_data = get_pct_no_data(df=subsub_cmems)
-            rmse = get_rmse(df=subsub_cmems)
-            median_bias = get_median_bias(df=subsub_cmems)
+            if ds_wv_cmems is not None and len(subsub_cmems) > 0:
+                print('ds_wv_cmems',ds_wv_cmems)
+                nb_out = get_nb_outliers(df=subsub_cmems)
+                pct_outlier = get_pct_outliers(df=subsub_cmems)
+                nb_no_data = get_number_no_data(df=subsub_cmems)
+                pct_no_data = get_pct_no_data(df=subsub_cmems)
+                rmse = get_rmse(df=subsub_cmems)
+                median_bias = get_median_bias(df=subsub_cmems)
 
-            metrics_cmems[wv][seastate]['nb_no_data'] = nb_no_data
-            metrics_cmems[wv][seastate]['rmse'] = rmse
-            metrics_cmems[wv][seastate]['median_abs_bias'] = median_bias
-            metrics_cmems[wv][seastate]['nb_outliers'] = nb_out
-            metrics_cmems[wv][seastate]['outlier-pct'] = pct_outlier
-            metrics_cmems[wv][seastate]['no-data-pct'] = pct_no_data
+                metrics_cmems[wv][seastate]['nb_no_data'] = nb_no_data
+                metrics_cmems[wv][seastate]['rmse'] = rmse
+                metrics_cmems[wv][seastate]['median_abs_bias'] = median_bias
+                metrics_cmems[wv][seastate]['nb_outliers'] = nb_out
+                metrics_cmems[wv][seastate]['outlier-pct'] = pct_outlier
+                metrics_cmems[wv][seastate]['no-data-pct'] = pct_no_data
     metrics_ndbc = compute_normalized_parameters(metrics_ndbc)
-    metrics_cmems = compute_normalized_parameters(metrics_cmems)
+    if ds_wv_cmems is not None:
+        metrics_cmems = compute_normalized_parameters(metrics_cmems)
     total_score, inc_scores = compute_score(metrics_ndbc=metrics_ndbc,metrics_cmems=metrics_cmems)
     return metrics_ndbc,metrics_cmems, total_score, inc_scores
 
@@ -285,13 +296,13 @@ def compute_normalized_parameters(metrics):
     return metrics
 
 
-def compute_score(metrics_ndbc,metrics_cmems):
+def compute_score(metrics_ndbc,metrics_cmems=None):
     """
     Compute the total score and scores per incidence angle and sea state class.
 
     Args:
         metrics_ndbc (dict): Dictionary containing normalized parameters WV vs NDBC.
-        metrics_cmems (dict): Dictionary containing normalized parameters WV vs CMEMS.
+        metrics_cmems (dict): Dictionary containing normalized parameters WV vs CMEMS. [optional]
 
     Returns:
         tuple: (total_score float, scores dict)
@@ -306,13 +317,17 @@ def compute_score(metrics_ndbc,metrics_cmems):
                 metrics_ndbc[wv][cat]['median_abs_bias_normalized'] +
                 metrics_ndbc[wv][cat]['outlier-pct_normalized']
             )
-            cmems_score_part = WEIGHTINGS_FACTOR_K[cat]['rmse']['ndbc'] * (
-                metrics_cmems[wv][cat]['no-data-pct_normalized'] +
-                metrics_cmems[wv][cat]['rmse_normalized'] +
-                metrics_cmems[wv][cat]['median_abs_bias_normalized'] +
-                metrics_cmems[wv][cat]['outlier-pct_normalized']
-            )
-            scores[wv][cat] = ndbc_score_part*0.3 + cmems_score_part*0.7
+            if metrics_cmems is None or len(metrics_cmems[wv]) == 0:
+                scores[wv][cat] = ndbc_score_part
+                print('only score wrt NDBC taken into account for', wv, cat)
+            else:
+                cmems_score_part = WEIGHTINGS_FACTOR_K[cat]['rmse']['ndbc'] * (
+                    metrics_cmems[wv][cat]['no-data-pct_normalized'] +
+                    metrics_cmems[wv][cat]['rmse_normalized'] +
+                    metrics_cmems[wv][cat]['median_abs_bias_normalized'] +
+                    metrics_cmems[wv][cat]['outlier-pct_normalized']
+                )
+                scores[wv][cat] = ndbc_score_part*0.3 + cmems_score_part*0.7
     # here not sure whether the total score is a sum or a mean
     # total_score = 0.5 * (np.sum([scores['wv1'][ss] for ss in scores['wv1']])) + \
     #               0.5 * (np.sum([scores['wv2'][ss] for ss in scores['wv2']]))
